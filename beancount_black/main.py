@@ -1,3 +1,4 @@
+from itertools import chain
 import logging
 import os
 import pathlib
@@ -8,6 +9,7 @@ import typing
 
 import click
 from beancount_parser.parser import make_parser
+from beancount_parser.parser import traverse
 
 from .formatter import Formatter
 from .formatter import VERBOSE_LOG_LEVEL
@@ -59,23 +61,18 @@ def create_backup(src: pathlib.Path, suffix: str) -> pathlib.Path:
     type=click.Choice(list(LOG_LEVEL_MAP), case_sensitive=False),
     default=lambda: os.environ.get("LOG_LEVEL", "INFO"),
 )
-@click.option("-n", "--no-backup", is_flag=True, help="Do not create backup file")
+@click.option("-b", "--backup", is_flag=True, help="Do not create backup file")
+@click.option("-r", "--recursive", is_flag=True, help="Follow includes and format them as well")
 def main(
     filename: typing.List[click.Path],
     backup_suffix: str,
     log_level: str,
     stdin_mode: bool,
-    no_backup: bool,
+    backup: bool,
+    recursive: bool,
 ):
     logging.basicConfig(level=LOG_LEVEL_MAP[log_level])
     logger = logging.getLogger(__name__)
-    logger.warning(
-        "Bean-black command-line is deprecated and will remain as is, with no feature updates. "
-        "It's subject to removal in future versions. "
-        "In the future, the beancount-black package will focus on serving as a Beancount formatter library. "
-        "Please use beanhub-cli (https://github.com/LaunchPlatform/beanhub-cli) instead if you need a formatter command-line tool. "
-        "Newer features like file traversal, account, or commodity renaming will only be available with beanhub-cli."
-    )
     parser = make_parser()
     formatter = Formatter()
     if stdin_mode:
@@ -84,25 +81,28 @@ def main(
         tree = parser.parse(input_content)
         formatter.format(tree, sys.stdout)
     else:
-        for name in filename:
-            logger.info("Processing file %s", name)
-            with open(name, "rt") as input_file:
-                input_content = input_file.read()
-                tree = parser.parse(input_content)
+        iterator = chain.from_iterable(traverse(
+            parser=parser,
+            bean_file=pathlib.Path(str(item)).resolve(),
+        ) for item in filename)
+        for filepath, tree in iterator:
+            logger.info("Processing file %s", filepath)
             with tempfile.NamedTemporaryFile(mode="wt+", suffix=".bean") as output_file:
+                formatter = Formatter()
                 formatter.format(tree, output_file)
                 output_file.seek(0)
                 output_content = output_file.read()
+                input_content = filepath.read_text()
                 if input_content == output_content:
-                    logger.info("File %s is not changed, skip", name)
+                    logger.info("File %s is not changed, skip", filepath)
                     continue
-                if not no_backup:
-                    backup_path = create_backup(
-                        src=pathlib.Path(str(name)), suffix=backup_suffix
+                if backup:
+                    backup_path = create_backup(src=filepath, suffix=backup_suffix)
+                    logger.info(
+                        "File %s changed, backup to %s", filepath, backup_path
                     )
-                    logger.info("File %s changed, backup to %s", name, backup_path)
                 output_file.seek(0)
-                with open(name, "wt") as input_file:
+                with open(filepath, "wt") as input_file:
                     shutil.copyfileobj(output_file, input_file)
     logger.info("done")
 

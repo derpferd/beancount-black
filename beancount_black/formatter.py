@@ -15,7 +15,7 @@ VERBOSE_LOG_LEVEL = logging.NOTSET + 1
 
 COMMENT_PREFIX = re.compile("[;*]+")
 DEFAULT_INDENT_WIDTH = 2
-DEFAULT_ACCOUNT_WIDTH = 30
+DEFAULT_ACCOUNT_WIDTH = 40
 DEFAULT_NUMBER_WIDTH = 12
 # the difference of column width we need to make up for balance account field,
 # so a balance statement starts with
@@ -55,7 +55,7 @@ LEADING_ENTRY_TYPES: typing.List[EntryType] = [
     EntryType.OPTION,
     EntryType.COMMODITY,
     EntryType.OPEN,
-    EntryType.CLOSE,
+    # EntryType.CLOSE,
 ]
 
 DATE_DIRECTIVE_ENTRY_TYPES = {
@@ -456,7 +456,7 @@ class Formatter:
                     columns[index] = new_value
             return " ".join(columns)
 
-    def format_posting(self, tree: Tree) -> str:
+    def format_posting(self, tree: Tree, account_width) -> str:
         if tree.data != "posting":
             raise ValueError("Expected a posting")
         # Simple posting
@@ -508,10 +508,14 @@ class Formatter:
         postings: typing.List[Posting],
     ) -> typing.List[str]:
         lines: typing.List[str] = []
+        account_width = self.account_width
+        for posting in postings:
+            flag, account = posting.statement.children[0].children[0].children[:2]
+            account_width = max(account_width, (0 if flag is None else 2) + len(account.value))
         for posting in postings:
             for comment in posting.comments:
                 lines.append(self.format_comment(comment))
-            line = self.format_posting(posting.statement.children[0])
+            line = self.format_posting(posting.statement.children[0], account_width)
             tail_comment = posting.statement.children[1]
             if tail_comment is not None:
                 line += " " + self.format_comment(tail_comment)
@@ -678,7 +682,7 @@ class Formatter:
     def format(self, tree: ParseTree, output_file: io.TextIOBase):
         if tree.data != "start":
             raise ValueError("expected start as the root rule")
-        self.calculate_column_widths(tree)
+        # self.calculate_column_widths(tree)
 
         collector = Collector()
         collector.collect(tree)
