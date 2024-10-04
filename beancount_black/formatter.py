@@ -476,7 +476,7 @@ class Formatter:
         # only need to apply width when it's not short posting format
         if amount is not None:
             # Need to add the difference for balance prefix width
-            width = self.account_width + (BALANCE_PREFIX_WIDTH - self.indent_width)
+            width = account_width + (BALANCE_PREFIX_WIDTH - self.indent_width) - (0 if flag is None else 2)
             account_value = f"{account_value:{width}}"
         items.append(account_value)
         if amount is not None:
