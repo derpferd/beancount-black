@@ -1,5 +1,6 @@
 import pathlib
 import shutil
+from typing import List
 
 import pytest
 from click.testing import CliRunner
@@ -30,46 +31,50 @@ def test_create_backup_with_conflicts(tmp_path: pathlib.Path):
 
 
 @pytest.mark.parametrize(
-    "input_file, expected_output_file",
+    "input_files, expected_output_files",
     [
-        ("oneline.bean", "oneline.bean"),
-        ("simple.bean", "simple.bean"),
-        ("cost_and_price.bean", "cost_and_price.bean"),
-        ("header_comments.bean", "header_comments.bean"),
-        ("sections.bean", "sections.bean"),
-        ("column_width.bean", "column_width.bean"),
-        ("txn.bean", "txn.bean"),
-        ("number_expr.bean", "number_expr.bean"),
-        ("tailing_comment.bean", "tailing_comment.bean"),
-        ("tailing_comments.bean", "tailing_comments.bean"),
-        ("metadata_items.bean", "metadata_items.bean"),
-        ("metadata_items.bean", "metadata_items.bean"),
-        ("balance.bean", "balance.bean"),
+        (["oneline.bean"], ["oneline.bean"]),
+        (["simple.bean"], ["simple.bean"]),
+        (["cost_and_price.bean"], ["cost_and_price.bean"]),
+        (["header_comments.bean"], ["header_comments.bean"]),
+        (["sections.bean"], ["sections.bean"]),
+        (["column_width.bean"], ["column_width.bean"]),
+        (["txn.bean"], ["txn.bean"]),
+        (["number_expr.bean"], ["number_expr.bean"]),
+        (["tailing_comment.bean"], ["tailing_comment.bean"]),
+        (["tailing_comments.bean"], ["tailing_comments.bean"]),
+        (["metadata_items.bean"], ["metadata_items.bean"]),
+        (["metadata_items.bean"], ["metadata_items.bean"]),
+        (["balance.bean"], ["balance.bean"]),
+        (["oneline.bean", "simple.bean"], ["oneline.bean", "simple.bean"]),
     ],
 )
 @pytest.mark.parametrize("stdin_mode", [False, True])
 def test_main(
     tmp_path: pathlib.Path,
     fixtures_folder: pathlib.Path,
-    input_file: pathlib.Path,
-    expected_output_file: pathlib.Path,
+    input_files: List[pathlib.Path],
+    expected_output_files: List[pathlib.Path],
     stdin_mode: bool,
 ):
-    input_file_path = fixtures_folder / "input" / input_file
-    expected_output_file_path = fixtures_folder / "expected_output" / input_file
-    tmp_input_file = tmp_path / "input.bean"
-    shutil.copy2(input_file_path, tmp_input_file)
+    if len(input_files) > 1 and stdin_mode:
+        pytest.skip("Stdin does not support multiple files")
+    input_file_paths = [fixtures_folder / "input" / input_file for input_file in input_files]
+    expected_output_file_paths = [fixtures_folder / "expected_output" / expected_output_file for expected_output_file in expected_output_files]
+    tmp_input_files = [tmp_path / f"input{i}.bean" for i in range(len(input_files))]
+    for input_file_path, tmp_input_file in zip(input_file_paths, tmp_input_files):
+        shutil.copy2(input_file_path, tmp_input_file)
     runner = CliRunner()
     if stdin_mode:
         result = runner.invoke(
-            main, ["-s", "-"], input=tmp_input_file.read_text(), catch_exceptions=False
+            main, ["-s", "-"], input=tmp_input_files[0].read_text(), catch_exceptions=False
         )
     else:
-        result = runner.invoke(main, [str(tmp_input_file)], catch_exceptions=False)
+        result = runner.invoke(main, [str(tmp_input_file) for tmp_input_file in tmp_input_files], catch_exceptions=False)
     assert result.exit_code == 0
     if stdin_mode:
-        updated_input_content = result.stdout
+        updated_input_contents = [result.stdout]
     else:
-        updated_input_content = tmp_input_file.read_text()
-    expected_output_content = expected_output_file_path.read_text()
-    assert updated_input_content == expected_output_content
+        updated_input_contents = [tmp_input_file.read_text() for tmp_input_file in tmp_input_files]
+    expected_output_contents = [expected_output_file_path.read_text() for expected_output_file_path in expected_output_file_paths]
+    assert updated_input_contents == expected_output_contents
